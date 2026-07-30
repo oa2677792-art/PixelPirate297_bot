@@ -158,8 +158,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_converter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle image conversion."""
-    user_id = update.effective_user.id
-    
     # Check if user sent a photo
     if update.message.photo:
         # Get the largest photo
@@ -253,8 +251,10 @@ async def handle_format_selection(update: Update, context: ContextTypes.DEFAULT_
         # Handle RGBA to RGB for JPG
         if output_format == 'jpg' and input_image.mode == 'RGBA':
             background = Image.new('RGB', input_image.size, (255, 255, 255))
-            background.paste(input_image, mask=input_image.split()[3] if input_image.mode == 'RGBA' else None)
+            background.paste(input_image, mask=input_image.split()[3])
             input_image = background
+        elif output_format == 'jpg' and input_image.mode == 'P':
+            input_image = input_image.convert('RGB')
         
         # Save to bytes
         output = io.BytesIO()
@@ -277,8 +277,10 @@ async def handle_format_selection(update: Update, context: ContextTypes.DEFAULT_
         )
         
         # Clean up
-        del context.user_data['image_data']
-        del context.user_data['image_format']
+        if 'image_data' in context.user_data:
+            del context.user_data['image_data']
+        if 'image_format' in context.user_data:
+            del context.user_data['image_format']
         
     except Exception as e:
         await query.edit_message_text(
@@ -310,16 +312,18 @@ async def handle_generator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Using Hugging Face API (free)
         API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
-        headers = {"Authorization": f"Bearer {os.environ.get('HUGGINGFACE_API_KEY', '')}"}
+        api_key = os.environ.get('HUGGINGFACE_API_KEY', '')
         
-        # If no API key, use a fallback or inform user
-        if not headers["Authorization"] or headers["Authorization"] == "Bearer ":
+        # If no API key, use fallback
+        if not api_key:
             await update.message.reply_text(
                 "⚠️ Image generation is currently unavailable.\n\n"
                 "Please set up a Hugging Face API key or try again later.\n"
                 "You can get a free key at: https://huggingface.co/settings/tokens"
             )
             return
+        
+        headers = {"Authorization": f"Bearer {api_key}"}
         
         response = requests.post(
             API_URL,
